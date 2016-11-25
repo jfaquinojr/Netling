@@ -126,10 +126,11 @@ namespace Netling.Client
                 StatusProgressbar.Value = 0;
                 StatusProgressbar.Visibility = Visibility.Visible;
 
+                Dictionary<string, string> headers = ParseHeaders();
                 if (count.HasValue)
-                    _task = Worker.Run(uri, count.Value, cancellationToken);
+                    _task = Worker.Run(uri, count.Value, cancellationToken, headers);
                 else
-                    _task = Worker.Run(uri, threads, threadAffinity, pipelining, duration, cancellationToken);
+                    _task = Worker.Run(uri, threads, threadAffinity, pipelining, duration, cancellationToken, headers);
 
                 _task.GetAwaiter().OnCompleted(async () =>
                 {
@@ -159,6 +160,21 @@ namespace Netling.Client
                 if (_cancellationTokenSource != null && !_cancellationTokenSource.IsCancellationRequested)
                     _cancellationTokenSource.Cancel();
             }
+        }
+
+        private Dictionary<string, string> ParseHeaders()
+        {
+            Dictionary<string, string> ret = new Dictionary<string, string>(Headers.LineCount);
+            for (int i = 0; i < Headers.LineCount; i++)
+            {
+                try
+                {
+                    string[] headerKeyValue = Headers.GetLineText(i).Split(':');
+                    ret.Add(headerKeyValue[0].Trim(), headerKeyValue[1].Trim());
+                }
+                catch {}
+            }
+            return ret;
         }
 
         private void Urls_OnKeyUp(object sender, KeyEventArgs e)
