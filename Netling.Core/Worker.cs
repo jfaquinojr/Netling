@@ -13,28 +13,30 @@ namespace Netling.Core
 {
     public static class Worker
     {
-        public static Task<WorkerResult> Run(Uri uri, int threads, bool threadAffinity, int pipelining, TimeSpan duration, CancellationToken cancellationToken)
+        public static Task<WorkerResult> Run(Uri uri, int threads, bool threadAffinity, int pipelining, TimeSpan duration, CancellationToken cancellationToken, Dictionary<string, string> headers = null)
         {
-            return Run(uri, threads, threadAffinity, pipelining, duration, null, cancellationToken);
+            return Run(uri, threads, threadAffinity, pipelining, duration, null, cancellationToken, headers);
         }
 
-        public static Task<WorkerResult> Run(Uri uri, int count, CancellationToken cancellationToken)
+        public static Task<WorkerResult> Run(Uri uri, int count, CancellationToken cancellationToken, Dictionary<string, string> headers = null)
         {
-            return Run(uri, 1, false, 1, TimeSpan.MaxValue, count, cancellationToken);
+            return Run(uri, 1, false, 1, TimeSpan.MaxValue, count, cancellationToken, headers);
         }
 
-        private static Task<WorkerResult> Run(Uri uri, int threads, bool threadAffinity, int pipelining, TimeSpan duration, int? count, CancellationToken cancellationToken)
+        private static Task<WorkerResult> Run(Uri uri, int threads, bool threadAffinity, int pipelining, 
+            TimeSpan duration, int? count, CancellationToken cancellationToken, Dictionary<string, string> headers = null)
         {
             return Task.Run(() =>
             {
-                var combinedWorkerThreadResult = QueueWorkerThreads(uri, threads, threadAffinity, pipelining, duration, count, cancellationToken);
+                var combinedWorkerThreadResult = QueueWorkerThreads(uri, threads, threadAffinity, pipelining, duration, count, cancellationToken, headers);
                 var workerResult = new WorkerResult(uri, threads, threadAffinity, pipelining, combinedWorkerThreadResult.Elapsed);
                 workerResult.Process(combinedWorkerThreadResult);
                 return workerResult;
             });
         }
 
-        private static CombinedWorkerThreadResult QueueWorkerThreads(Uri uri, int threads, bool threadAffinity, int pipelining, TimeSpan duration, int? count, CancellationToken cancellationToken)
+        private static CombinedWorkerThreadResult QueueWorkerThreads(Uri uri, int threads, bool threadAffinity, int pipelining, 
+            TimeSpan duration, int? count, CancellationToken cancellationToken, Dictionary<string, string> headers = null)
         {
             var results = new ConcurrentQueue<WorkerThreadResult>();
             var events = new List<ManualResetEventSlim>();
@@ -47,7 +49,7 @@ namespace Netling.Core
 
                 ThreadHelper.QueueThread(i, threadAffinity, (threadIndex) =>
                 {
-                    DoWork(uri, duration, count, pipelining, results, sw, cancellationToken, resetEvent, threadIndex);
+                    DoWork(uri, duration, count, pipelining, results, sw, cancellationToken, resetEvent, threadIndex, headers);
                 });
 
                 events.Add(resetEvent);
@@ -63,12 +65,24 @@ namespace Netling.Core
             return new CombinedWorkerThreadResult(results, sw.Elapsed);
         }
 
-        private static void DoWork(Uri uri, TimeSpan duration, int? count, int pipelining, ConcurrentQueue<WorkerThreadResult> results, Stopwatch sw, CancellationToken cancellationToken, ManualResetEventSlim resetEvent, int workerIndex)
+        private static void DoWork(Uri uri, TimeSpan duration, int? count, int pipelining, ConcurrentQueue<WorkerThreadResult> results, 
+            Stopwatch sw, CancellationToken cancellationToken, ManualResetEventSlim resetEvent, int workerIndex,
+            Dictionary<string, string> headers = null)
         {
             var result = new WorkerThreadResult();
             var sw2 = new Stopwatch();
             var sw3 = new Stopwatch();
-            var worker = new HttpWorker(uri);
+
+            HttpWorker worker;
+            if (headers != null && headers.Any())
+            {
+                worker = new HttpWorker(uri, headers: headers);
+            }
+            else
+            {
+                worker = new HttpWorker(uri);
+            }
+            
             var current = 0;
 
             // To save memory we only track response times from the first 20 workers
